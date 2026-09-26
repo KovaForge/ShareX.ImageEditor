@@ -1,6 +1,6 @@
+using ShareX.ImageEditor.Presentation.Theming;
 using ShareX.ImageEditor.Core.ImageEffects.Helpers;
 using ShareX.ImageEditor.Core.ImageEffects.Parameters;
-using ShareX.ImageEditor.Presentation.Theming;
 using SkiaSharp;
 
 namespace ShareX.ImageEditor.Core.ImageEffects.Filters;
@@ -133,7 +133,8 @@ public sealed class InnerShadowImageEffect : ImageEffectBase
 
         using SKBitmap blurredExpanded = new(expandedWidth, expandedHeight, source.ColorType, source.AlphaType);
         using (SKCanvas blurCanvas = new(blurredExpanded))
-        using (SKPaint blurPaint = new() { ImageFilter = SKImageFilter.CreateBlur(sigma, sigma) })
+        using (var ownedImageFilter1 = SKImageFilter.CreateBlur(sigma, sigma))
+        using (SKPaint blurPaint = new() { ImageFilter = ownedImageFilter1 })
         {
             blurCanvas.DrawBitmap(expanded, 0, 0, blurPaint);
         }

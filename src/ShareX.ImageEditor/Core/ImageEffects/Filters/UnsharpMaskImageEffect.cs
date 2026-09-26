@@ -1,5 +1,5 @@
-using ShareX.ImageEditor.Core.ImageEffects.Parameters;
 using ShareX.ImageEditor.Presentation.Theming;
+using ShareX.ImageEditor.Core.ImageEffects.Parameters;
 using SkiaSharp;
 
 namespace ShareX.ImageEditor.Core.ImageEffects.Filters;
@@ -36,7 +36,7 @@ public sealed class UnsharpMaskImageEffect : ImageEffectBase
             return source.Copy();
         }
 
-        SKBitmap blurred = ApplyBlur(source, radius / 3f);
+        using SKBitmap blurred = ApplyBlur(source, radius / 3f);
 
         SKColor[] srcPixels = source.Pixels;
         SKColor[] blurPixels = blurred.Pixels;
@@ -54,7 +54,6 @@ public sealed class UnsharpMaskImageEffect : ImageEffectBase
             dstPixels[i] = new SKColor(r, g, bch, o.Alpha);
         }
 
-        blurred.Dispose();
 
         return new SKBitmap(source.Width, source.Height, source.ColorType, source.AlphaType)
         {
@@ -87,4 +86,3 @@ public sealed class UnsharpMaskImageEffect : ImageEffectBase
         return (byte)MathF.Round(value);
     }
 }
-

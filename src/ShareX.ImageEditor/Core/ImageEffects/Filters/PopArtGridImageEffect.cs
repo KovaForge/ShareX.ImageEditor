@@ -1,5 +1,5 @@
-using ShareX.ImageEditor.Core.ImageEffects.Parameters;
 using ShareX.ImageEditor.Presentation.Theming;
+using ShareX.ImageEditor.Core.ImageEffects.Parameters;
 using SkiaSharp;
 
 namespace ShareX.ImageEditor.Core.ImageEffects.Filters;
@@ -35,7 +35,7 @@ public sealed class PopArtGridImageEffect : ImageEffectBase
         float s = Math.Clamp(Strength / 100f, 0f, 1f);
 
         // Create high-contrast grayscale version
-        SKBitmap gray = new(w, h, source.ColorType, source.AlphaType);
+        using SKBitmap gray = new(w, h, source.ColorType, source.AlphaType);
         using (SKCanvas gc = new(gray))
         {
             float[] grayMatrix =
@@ -79,7 +79,6 @@ public sealed class PopArtGridImageEffect : ImageEffectBase
             canvas.Restore();
         }
 
-        gray.Dispose();
         return result;
     }
 }
