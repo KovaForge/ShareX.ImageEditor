@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
 using Avalonia.Media;
 
 namespace ShareX.ImageEditor.Core.Annotations;
@@ -14,6 +15,19 @@ public partial class HighlightAnnotation
         var highlightColor = Color.FromArgb(0x55, baseColor.R, baseColor.G, baseColor.B);
 
         return new Avalonia.Controls.Shapes.Rectangle
+        {
+            Fill = new SolidColorBrush(highlightColor),
+            Stroke = Brushes.Transparent,
+            StrokeThickness = 0,
+            Tag = this
+        };
+    }
+
+    internal Control CreatePreviewVisual()
+    {
+        Color baseColor = Color.Parse(StrokeColor);
+        Color highlightColor = Color.FromArgb(0x55, baseColor.R, baseColor.G, baseColor.B);
+        return new Rectangle
         {
             Fill = new SolidColorBrush(highlightColor),
             Stroke = Brushes.Transparent,

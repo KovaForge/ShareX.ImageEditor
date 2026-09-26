@@ -299,14 +299,7 @@ public partial class NumberAnnotation : Annotation
             return false;
         }
 
-        if (PointInTriangle(point, tailBaseStart, triangleTailTip, tailBaseEnd))
-        {
-            return true;
-        }
-
-        return DistanceToSegment(point, tailBaseStart, triangleTailTip) <= tolerance ||
-               DistanceToSegment(point, triangleTailTip, tailBaseEnd) <= tolerance ||
-               DistanceToSegment(point, tailBaseEnd, tailBaseStart) <= tolerance;
+        return TailGeometryHelper.HitTest(point, tailBaseStart, triangleTailTip, tailBaseEnd, tolerance);
     }
 
     public override SKRect GetBounds()
@@ -424,18 +417,6 @@ public partial class NumberAnnotation : Annotation
         return true;
     }
 
-    private static bool PointInTriangle(SKPoint point, SKPoint a, SKPoint b, SKPoint c)
-    {
-        float d1 = Sign(point, a, b);
-        float d2 = Sign(point, b, c);
-        float d3 = Sign(point, c, a);
-
-        bool hasNegative = d1 < 0 || d2 < 0 || d3 < 0;
-        bool hasPositive = d1 > 0 || d2 > 0 || d3 > 0;
-
-        return !(hasNegative && hasPositive);
-    }
-
     private static bool PointInPolygon(SKPoint point, IReadOnlyList<SKPoint> polygon)
     {
         bool inside = false;
@@ -454,12 +435,6 @@ public partial class NumberAnnotation : Annotation
         }
 
         return inside;
-    }
-
-    private static float Sign(SKPoint p1, SKPoint p2, SKPoint p3)
-    {
-        return (p1.X - p3.X) * (p2.Y - p3.Y) -
-               (p2.X - p3.X) * (p1.Y - p3.Y);
     }
 
     private static float Distance(SKPoint a, SKPoint b)
@@ -502,5 +477,19 @@ public partial class NumberAnnotation : Annotation
         }
 
         return result;
+    }
+
+    internal override void TransformAdditionalPoints(Func<SKPoint, SKPoint> transformPoint)
+    {
+        if (HasTailPoint)
+        {
+            SetTailPoint(transformPoint(TailPoint));
+        }
+    }
+
+    internal override void MoveBy(float deltaX, float deltaY)
+    {
+        base.MoveBy(deltaX, deltaY);
+        TransformAdditionalPoints(point => new SKPoint(point.X + deltaX, point.Y + deltaY));
     }
 }

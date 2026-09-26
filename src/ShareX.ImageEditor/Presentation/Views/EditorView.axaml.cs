@@ -77,6 +77,7 @@ namespace ShareX.ImageEditor.Presentation.Views
         private bool _pendingZoomToFitOnOpen;
         private int _pendingZoomToFitRetryCount;
         private int _pendingAutoCopyImageVersion;
+        private bool _workspaceDisposed;
         private bool _overlayCanvasLayoutUpdatePending;
         private Rect? _lastOverlayCanvasRect;
         private double _lastOverlayCanvasZoom = -1;
@@ -125,6 +126,7 @@ namespace ShareX.ImageEditor.Presentation.Views
 
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
+                    if (_workspaceDisposed) return;
                     if (_canvasControl != null)
                     {
                         _canvasControl.Initialize((int)_editorCore.CanvasSize.Width, (int)_editorCore.CanvasSize.Height);
@@ -496,6 +498,7 @@ namespace ShareX.ImageEditor.Presentation.Views
         {
             base.OnLoaded(e);
 
+            if (_workspaceDisposed) return;
             ThemeManager.ThemeChanged += OnThemeChanged;
 
             // Check clipboard initially
@@ -503,6 +506,7 @@ namespace ShareX.ImageEditor.Presentation.Views
 
             // Attach key handlers to the parent Window so shortcuts work
             // regardless of which child control has focus (buttons, dropdowns, etc.).
+            DetachParentWindow();
             _parentWindow = TopLevel.GetTopLevel(this) as Window;
             if (_parentWindow != null)
             {
@@ -516,48 +520,13 @@ namespace ShareX.ImageEditor.Presentation.Views
 
             if (DataContext is MainViewModel vm)
             {
-                vm.AttachEditorCore(_editorCore);
+                AttachViewModel(vm);
                 _editorCore.ActiveTool = vm.ActiveTool;
                 HookAnnotationToolbarEvents();
-
-                vm.DeleteRequested += (s, args) => PerformDelete();
-                vm.UndoRequested += (s, args) => PerformUndo();
-                vm.RedoRequested += (s, args) => PerformRedo();
-                vm.ClearAnnotationsRequested += (s, args) => ClearAllAnnotations();
-
-                // Subscribe to new context menu events
-                vm.CutAnnotationRequested += OnCutRequested;
-                vm.CopyAnnotationRequested += OnCopyRequested;
-                vm.PasteRequested += OnPasteRequested;
-                vm.DuplicateRequested += OnDuplicateRequested;
-                vm.ZoomToFitRequested += OnZoomToFitRequested;
-                vm.FlattenRequested += OnFlattenRequested;
-                vm.ImageInsertionRequested += OnImageInsertionRequested;
-                vm.EmojiInsertionRequested += OnEmojiInsertionRequested;
-
-                // File menu event handlers (Image Editor Mode)
-                vm.NewImageRequested += OnNewImageRequested;
-                vm.OpenImageRequested += OnOpenImageRequested;
-                vm.StartScreenRequested += OnStartScreenRequested;
-                vm.LoadFromClipboardRequested += OnLoadFromClipboardRequested;
-                vm.LoadFromUrlRequested += OnLoadFromUrlRequested;
-                vm.LoadRecentFileRequested += OnLoadRecentFileRequested;
-                vm.CopyRequested += OnCopyImageRequested;
-                vm.SaveRequested += OnSaveRequested;
-                vm.SaveAsRequested += OnSaveAsRequested;
-                vm.OpenOptionsPanelRequested += OnOpenOptionsPanelRequested;
-                vm.FileMenuRequested += OnFileMenuRequested;
-
-                // Original code subscribed to vm.PropertyChanged
-                vm.PropertyChanged += OnViewModelPropertyChanged;
 
                 // Initialize zoom
                 _zoomController.InitLastZoom(vm.Zoom);
                 UpdateCursorForTool();
-
-                // Wire up View interactions
-                vm.DeselectRequested += OnDeselectRequested;
-                vm.CanvasFocusRequested += OnCanvasFocusRequested;
 
                 // Initial load
                 if (vm.PreviewImage != null)
@@ -588,37 +557,11 @@ namespace ShareX.ImageEditor.Presentation.Views
             base.OnUnloaded(e);
 
             ThemeManager.ThemeChanged -= OnThemeChanged;
-
-            if (_parentWindow != null)
-            {
-                _parentWindow.KeyDown -= OnKeyDown;
-                _parentWindow.KeyUp -= OnKeyUp;
-                _parentWindow.Activated -= OnWindowActivated;
-            }
-
-            if (DataContext is MainViewModel vm)
-            {
-                vm.PropertyChanged -= OnViewModelPropertyChanged;
-                vm.DeselectRequested -= OnDeselectRequested;
-                vm.ZoomToFitRequested -= OnZoomToFitRequested;
-                vm.NewImageRequested -= OnNewImageRequested;
-                vm.OpenImageRequested -= OnOpenImageRequested;
-                vm.StartScreenRequested -= OnStartScreenRequested;
-                vm.LoadFromClipboardRequested -= OnLoadFromClipboardRequested;
-                vm.LoadFromUrlRequested -= OnLoadFromUrlRequested;
-                vm.LoadRecentFileRequested -= OnLoadRecentFileRequested;
-                vm.CopyRequested -= OnCopyImageRequested;
-                vm.SaveRequested -= OnSaveRequested;
-                vm.SaveAsRequested -= OnSaveAsRequested;
-                vm.OpenOptionsPanelRequested -= OnOpenOptionsPanelRequested;
-                vm.FileMenuRequested -= OnFileMenuRequested;
-                vm.ImageInsertionRequested -= OnImageInsertionRequested;
-                vm.EmojiInsertionRequested -= OnEmojiInsertionRequested;
-            }
+            DetachParentWindow();
+            DetachViewModel();
 
             UnhookAnnotationToolbarEvents();
             StopEasterEggs();
-            _selectionController.RequestUpdateEffect -= OnRequestUpdateEffect;
             ClearEffectPreviewCache();
             SetPlatformSettings(null);
         }
@@ -1371,6 +1314,54 @@ namespace ShareX.ImageEditor.Presentation.Views
             _canvasControl = this.FindControl<SKCanvasControl>("CanvasControl");
         }
 
+        /// <summary>Releases event subscriptions and the large raster buffers owned by this editor.</summary>
+        public void DisposeWorkspace()
+        {
+            if (_workspaceDisposed)
+            {
+                return;
+            }
+
+            _workspaceDisposed = true;
+            _pendingAutoCopyImageVersion++;
+            _cancelPendingImageInsertion?.Invoke();
+            ThemeManager.ThemeChanged -= OnThemeChanged;
+            DetachParentWindow();
+            DetachViewModel();
+            UnhookAnnotationToolbarEvents();
+            StopEasterEggs();
+            _selectionController.RequestUpdateEffect -= OnRequestUpdateEffect;
+            ClearEffectPreviewCache();
+            this.FindControl<SpotlightOverlayControl>("SpotlightOverlayControl")?.Dispose();
+            ReleaseAnnotationDisplayBitmaps();
+            _canvasControl?.Dispose();
+            _editorCore.Dispose();
+        }
+
+        private void ReleaseAnnotationDisplayBitmaps()
+        {
+            foreach (string canvasName in new[] { "AnnotationCanvas", "OverlayCanvas" })
+            {
+                if (this.FindControl<Canvas>(canvasName) is not { } canvas) continue;
+
+                foreach (Control control in canvas.Children)
+                {
+                    if (control is Image { Tag: ImageAnnotation } image)
+                    {
+                        var source = image.Source;
+                        image.Source = null;
+                        (source as IDisposable)?.Dispose();
+                    }
+                    else if (control is global::Avalonia.Controls.Shapes.Rectangle { Tag: SmartEraserAnnotation } rectangle
+                        && rectangle.Fill is ImageBrush brush)
+                    {
+                        rectangle.Fill = null;
+                        (brush.Source as IDisposable)?.Dispose();
+                    }
+                }
+            }
+        }
+
         private void LoadImageFromViewModel(MainViewModel vm)
         {
             if (vm.PreviewImage == null || _canvasControl == null) return;
@@ -1459,7 +1450,7 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         private void QueueAutoCopyImageToClipboard(MainViewModel vm)
         {
-            if (!vm.Options.AutoCopyImageToClipboard || !vm.HasPreviewImage)
+            if (_workspaceDisposed || !vm.Options.AutoCopyImageToClipboard || !vm.HasPreviewImage)
             {
                 return;
             }

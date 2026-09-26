@@ -120,8 +120,16 @@ namespace ShareX.ImageEditor.Presentation.Views
             return skBitmap == null ? null : (skBitmap, files[0].Path.LocalPath);
         }
 
+        private Action? _cancelPendingImageInsertion;
+
         private async Task InsertExternalImageAsync(SKBitmap skBitmap, string? sourceFilePath = null)
         {
+            if (_workspaceDisposed)
+            {
+                skBitmap.Dispose();
+                return;
+            }
+
             if (DataContext is not MainViewModel vm)
             {
                 InsertImageAnnotation(skBitmap);
@@ -138,7 +146,7 @@ namespace ShareX.ImageEditor.Presentation.Views
                 ? await ShowInsertImageDialogAsync(vm, skBitmap)
                 : InsertImagePlacement.Center;
 
-            if (!placement.HasValue)
+            if (_workspaceDisposed || !placement.HasValue)
             {
                 skBitmap.Dispose();
                 return;
@@ -149,7 +157,7 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         private Task<InsertImagePlacement?> ShowInsertImageDialogAsync(MainViewModel vm, SKBitmap skBitmap)
         {
-            if (vm.IsModalOpen)
+            if (_workspaceDisposed || vm.IsModalOpen)
             {
                 return Task.FromResult<InsertImagePlacement?>(null);
             }
@@ -163,6 +171,8 @@ namespace ShareX.ImageEditor.Presentation.Views
                 {
                     return;
                 }
+
+                _cancelPendingImageInsertion = null;
 
                 if (propertyChangedHandler != null)
                 {
@@ -193,6 +203,15 @@ namespace ShareX.ImageEditor.Presentation.Views
                     Complete(null);
                     vm.CloseModalCommand.Execute(null);
                 });
+
+            _cancelPendingImageInsertion = () =>
+            {
+                Complete(null);
+                if (ReferenceEquals(vm.ModalContent, dialog))
+                {
+                    vm.CloseModalCommand.Execute(null);
+                }
+            };
 
             vm.ModalContent = dialog;
             vm.IsModalOpen = true;
@@ -234,7 +253,11 @@ namespace ShareX.ImageEditor.Presentation.Views
             InsertImageAnnotationCore(skBitmap, position);
         }
 
-        private void InsertImageAnnotationCore(SKBitmap skBitmap, Point? position = null, bool showNotification = true)
+        private void InsertImageAnnotationCore(
+            SKBitmap skBitmap,
+            Point? position = null,
+            bool showNotification = true,
+            bool selectAnnotation = true)
         {
             var canvas = this.FindControl<Canvas>("AnnotationCanvas");
             if (canvas == null || DataContext is not MainViewModel vm)
@@ -274,8 +297,12 @@ namespace ShareX.ImageEditor.Presentation.Views
             canvas.Children.Add(control);
             _editorCore.AddAnnotation(annotation);
             vm.HasAnnotations = true;
-            vm.ActiveTool = EditorTool.Select;
-            _selectionController.SetSelectedShape(control);
+            if (selectAnnotation)
+            {
+                vm.ActiveTool = EditorTool.Select;
+                _selectionController.SetSelectedShape(control);
+            }
+
             if (showNotification)
             {
                 vm.ShowImageInsertedNotification();

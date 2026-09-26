@@ -53,6 +53,7 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         internal void RefreshSpotlightOverlay()
         {
+            if (_workspaceDisposed) return;
             var spotlightOverlay = this.FindControl<SpotlightOverlayControl>("SpotlightOverlayControl");
             var annotationCanvas = this.FindControl<Canvas>("AnnotationCanvas");
             if (spotlightOverlay == null || annotationCanvas == null)
@@ -75,7 +76,7 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         private void RenderCore()
         {
-            if (_canvasControl == null) return;
+            if (_workspaceDisposed || _canvasControl == null) return;
             // Hybrid rendering: Render only background + raster effects from Core
             // Vector annotations are handled by Avalonia Canvas
             _canvasControl.Draw(canvas => _editorCore.Render(canvas));
@@ -186,7 +187,7 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         public Task<Bitmap?> RenderSnapshot()
         {
-            var skBitmap = GetSnapshot();
+            using var skBitmap = GetSnapshot();
             var snapshot = skBitmap != null ? BitmapConversionHelpers.ToAvaloniBitmap(skBitmap) : null;
             return Task.FromResult<Bitmap?>(snapshot);
         }
@@ -337,6 +338,7 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         private void OnAnnotationsRestored()
         {
+            if (_workspaceDisposed) return;
             // Fully rebuild annotation layer from Core state
             // 1. Clear current UI annotations
             var canvas = this.FindControl<Canvas>("AnnotationCanvas");
@@ -370,6 +372,7 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         private void OnAnnotationOrderChanged()
         {
+            if (_workspaceDisposed) return;
             var canvas = this.FindControl<Canvas>("AnnotationCanvas");
             if (canvas == null) return;
 
