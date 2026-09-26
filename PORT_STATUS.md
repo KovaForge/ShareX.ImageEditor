@@ -1,11 +1,61 @@
 # ShareX.ImageEditor Port Status
 
-Last updated: 2026-08-18
+Last updated: 2026-09-26
 
 ## Port Source
-- ShareX.ImageEditor commit: `ebcee2a63` (latest upstream ShareX commit touching ShareX.ImageEditor as of 2026-08-18)
-- XerahS submodule last synced to: `ebcee2a63`
-- XerahS submodule current HEAD before this session: `1bcb66c`
+- ShareX.ImageEditor commit: `94838f6a4` (latest upstream ShareX commit touching ShareX.ImageEditor as of 2026-09-26)
+- XerahS submodule last synced to: `94838f6a4`
+- XerahS submodule current HEAD before this session: `002de77`
+
+## Port Activity (2026-09-26)
+
+- Previous recorded ShareX sync: `ebcee2a63`
+- Latest upstream ShareX commit touching ShareX.ImageEditor: `94838f6a4` (Add search icon to remote storage browser field)
+- Result: caught up through `94838f6a4`
+- Method: `.ai/skills/port-imageeditor/scripts/triage.py` + `sync.py` (3-way merge with XerahS namespace rewrites) from the local Linux checkout `/home/mike/Projects/ShareX/ShareX` (deepened from a depth-1 clone with `fetch --shallow-since`), then manual conflict resolution
+- Range size: 19 upstream commits, 340 files. Triage: 18 DIVERGED (7 conflicted), 74 SAFE_SYNC, 14 NEW, 193 NO_OP, 6 namespace-only (kept), 3 upstream-deleted (kept), 32 localization (skipped)
+- Risk: high. Central refactors of EditorCore, EditorView, the input and selection controllers, and the visual factory, plus lifecycle and disposal changes
+- Commits: `9b8a581` (effect disposal), `63c941c` (control/service resource ownership), `c4dbb37` (grouped port)
+
+### Feature groups ported
+
+- Image effect disposal of owned Skia shaders, filters, and bitmaps: `e10a4eb`, `5c38099`
+- Resource ownership in `SKCanvasControl`, `SpotlightOverlayControl`, `WindowsEmojiBitmapRenderer`, `LinuxDesktopWallpaperService`: `e10a4eb`
+- Selection resize node centralization (`SelectionResizeNode`): `c3d13cf`
+- AnnotationVisualFactory split into per-annotation `.Visual.cs` + `AnnotationVisualHelpers`: `b3a7f3f`
+- Annotation movement (`TransformPoints`/`MoveBy`), `TailGeometryHelper`, text-editing extraction: `3efb2ac`
+- Crop interaction and `CropAdorner`: `ebefab3`, `30fa538`; auto-crop/text editing: `952b9d2`
+- Cutout handling and editor history streamlining: `7966bec`
+- Workspace-inserted images no longer auto-selected: `596e6a3`
+- Smart Eraser samples its color at draw start: `1e6db2f`
+- Editor view lifecycle (`EditorView.Subscriptions.cs`, `MainViewModel.Lifetime.cs`) and disposal of replaced images: `1889493`, `e10a4eb`
+- Dispose editor resources after the window closes (ShareX #8842): `8e466b7`
+
+### Intentional skips / keeps
+
+- In-editor Options panel removal (`f58d576`): kept `EditorOptionsPanel`, `MainViewModel.EditorOptions.cs`, `ShowOptionsButton`, `OpenOptionsPanelCommand` for the standalone editor. The removal was reverse-applied after sync.
+- Localization (`Localization/*`, `1b47317`) and generated resources (`41bd60b`): English-only.
+- `ebc28e9` and 6 files that only drop unused `using`s: kept XerahS.
+- Workspace-host APIs in `EditorView` (`ConfigureForFullscreenWorkspace`, `LoadWorkspaceImage`, `GetWorkspacePixel`, `DeleteWorkspaceAnnotationAt`, `CancelActiveInteractionOrSelection`, `InsertWorkspaceImageAnnotation`, `ResetModalContentPosition`): still absent. Only `DisposeWorkspace` / `ReleaseAnnotationDisplayBitmaps` were ported.
+
+### Adaptations kept for XerahS
+
+- `BitmapConversionHelpers` stays in `Presentation.Rendering` (upstream moved it to `ShareX.AvaloniaUI.Imaging`); re-added the `using` in 5 synced files.
+- `NumberAnnotation`: kept the `StepTailStyle` arrow-tail system; adopted `TailGeometryHelper` for triangle hit-testing and added the `TransformAdditionalPoints`/`MoveBy` overrides.
+- `EditorView`: kept `ThemeManager.ThemeChanged` wiring (also unsubscribed in `DisposeWorkspace`) and `OpenOptionsPanelRequested` in `EditorView.Subscriptions.cs`.
+- `AvaloniaIntegration`: kept `ShowFileMenu = !taskMode` and `ShowOptionsButton = true`.
+- All step-3b persistence, title, and theming adaptations verified present.
+
+### Root integration updated in the same session
+
+- `XerahS.RegionCapture/UI/OverlayWindow.Canvas.cs`: now samples the Smart Eraser color at draw start with `ResolveSmartEraserColor`, because `ConfigureFill` no longer sets a fallback color.
+
+### Verification
+
+- `dotnet build ShareX.ImageEditor/src/ShareX.ImageEditor/ShareX.ImageEditor.csproj -m:1`: 0 warnings, 0 errors (Linux, 2026-09-26).
+- `dotnet build ShareX.ImageEditor.sln -m:1`: 0 warnings, 0 errors.
+- `dotnet build src/desktop/XerahS.sln -m:1`: 0 warnings, 0 errors.
+- `dotnet test tests/XerahS.Tests/XerahS.Tests.csproj`: 1612 passed, 0 failed. Two RegionCapture smoke tests failed before the port on Linux/Wayland hosts; they are fixed in the XerahS root.
 
 ## Port Activity (2026-08-18)
 
