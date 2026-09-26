@@ -1,3 +1,5 @@
+using SkiaSharp;
+
 namespace ShareX.ImageEditor.Core.ImageEffects.Drawings;
 
 public enum DrawingPlacement
@@ -55,4 +57,29 @@ public enum DrawingCompositingMode
 {
     SourceOver,
     SourceCopy
+}
+
+public enum DrawingGradientType
+{
+    Vertical,
+    Horizontal,
+    ForwardDiagonal,
+    BackwardDiagonal
+}
+
+/// <summary>One gradient color stop. <see cref="Location"/> is a percentage (0-100), as in ShareX presets.</summary>
+public sealed class DrawingGradientStop
+{
+    public SKColor Color { get; set; }
+    public float Location { get; set; }
+
+    public DrawingGradientStop()
+    {
+    }
+
+    public DrawingGradientStop(SKColor color, float location)
+    {
+        Color = color;
+        Location = location;
+    }
 }
