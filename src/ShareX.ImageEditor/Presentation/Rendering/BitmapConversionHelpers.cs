@@ -25,166 +25,87 @@
 
 using Avalonia;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using SkiaSharp;
 
-namespace ShareX.ImageEditor.Presentation.Rendering
+namespace ShareX.ImageEditor.Presentation.Rendering;
+
+/// <summary>Converts bitmap pixels without assuming the renderer's channel or alpha layout.</summary>
+public static class BitmapConversionHelpers
 {
-    /// <summary>
-    /// Helper class for converting between Avalonia Bitmap and SKBitmap
-    /// </summary>
-    /// <summary>
-    /// Helper class for converting between Avalonia Bitmap and SKBitmap
-    /// </summary>
-    public static class BitmapConversionHelpers
+    public static SKBitmap ToSKBitmap(Bitmap avaloniaBitmap)
     {
-        /// <summary>
-        /// Convert Avalonia Bitmap to SKBitmap.
-        /// Warning: This is expensive if the input is not a WriteableBitmap.
-        /// </summary>
-        public static SKBitmap ToSKBitmap(Bitmap avaloniaBitmap)
+        ArgumentNullException.ThrowIfNull(avaloniaBitmap);
+        if (avaloniaBitmap is WriteableBitmap writable)
         {
-            if (avaloniaBitmap == null)
-                throw new ArgumentNullException(nameof(avaloniaBitmap));
-
-            // Optimized path for WriteableBitmap
-            if (avaloniaBitmap is WriteableBitmap writeableBitmap)
+            using var locked = writable.Lock();
+            if (TryGetInfo(locked.Size, locked.Format, locked.AlphaFormat, out var info))
             {
-                using (var locked = writeableBitmap.Lock())
+                var result = new SKBitmap(info);
+                try
                 {
-                    var pixelSize = writeableBitmap.PixelSize;
-                    var info = new SKImageInfo(
-                        pixelSize.Width,
-                        pixelSize.Height,
-                        SKColorType.Bgra8888, // Avalonia usually uses BGRA
-                        SKAlphaType.Premul);
-
-                    var skBitmap = new SKBitmap(info);
-                    unsafe
-                    {
-                        var srcPtr = locked.Address;
-                        var dstPtr = skBitmap.GetPixels();
-
-                        // Copy row by row to handle stride differences if any
-                        var height = info.Height;
-                        var srcStride = locked.RowBytes;
-                        var dstStride = skBitmap.RowBytes;
-                        var bytesPerRow = Math.Min(srcStride, dstStride); // Safe copy width
-
-                        if (srcStride == dstStride)
-                        {
-                            // Full block copy if strides match (most common)
-                            long totalBytes = (long)height * srcStride;
-                            Buffer.MemoryCopy((void*)srcPtr, (void*)dstPtr, totalBytes, totalBytes);
-                        }
-                        else
-                        {
-                            for (int y = 0; y < height; y++)
-                            {
-                                var srcRow = (byte*)srcPtr + (y * srcStride);
-                                var dstRow = (byte*)dstPtr + (y * dstStride);
-                                Buffer.MemoryCopy(srcRow, dstRow, bytesPerRow, bytesPerRow);
-                            }
-                        }
-                    }
-                    return skBitmap;
+                    CopyRows(locked.Address, locked.RowBytes, result.GetPixels(), result.RowBytes, info.RowBytes, info.Height);
+                    return result;
                 }
-            }
-            else
-            {
-                // Fast path for any Avalonia Bitmap: direct pixel copy via CopyPixels (no PNG encode/decode)
-                var pixelSize = avaloniaBitmap.PixelSize;
-                var info = new SKImageInfo(pixelSize.Width, pixelSize.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-                var skBitmap = new SKBitmap(info);
-                var pixels = skBitmap.GetPixels(out IntPtr length);
-                avaloniaBitmap.CopyPixels(new PixelRect(0, 0, pixelSize.Width, pixelSize.Height), pixels, (int)length, info.RowBytes);
-                return skBitmap;
+                catch { result.Dispose(); throw; }
             }
         }
-
-        /// <summary>
-        /// Convert SKBitmap to Avalonia Bitmap using WriteableBitmap for high performance.
-        /// </summary>
-        public static Bitmap ToAvaloniBitmap(SKBitmap skBitmap)
+        else if (avaloniaBitmap.Format is { } format && avaloniaBitmap.AlphaFormat is { } alpha &&
+                 TryGetInfo(avaloniaBitmap.PixelSize, format, alpha, out var info))
         {
-            if (skBitmap == null)
-                throw new ArgumentNullException(nameof(skBitmap));
-
-            // Ensure we are in a compatible format for Avalonia (BGRA8888 is standard)
-            // If not, we might need to convert.
-            // Avalonia WriteableBitmap usually expects Bgra8888 or Rgba8888 depending on platform, but Bgr8888 is safest default.
-
-            var width = skBitmap.Width;
-            var height = skBitmap.Height;
-
-            // Create WriteableBitmap
-            var writeableBitmap = new WriteableBitmap(
-                new Avalonia.PixelSize(width, height),
-                new Avalonia.Vector(96, 96), // DPI
-                Avalonia.Platform.PixelFormat.Bgra8888,
-                Avalonia.Platform.AlphaFormat.Premul);
-
-            using (var locked = writeableBitmap.Lock())
+            var result = new SKBitmap(info);
+            try
             {
-                var info = skBitmap.Info;
-
-                // Raw byte copy is only valid when the source pixels are already in the
-                // premultiplied format expected by Avalonia's WriteableBitmap buffer.
-                if (info.ColorType == SKColorType.Bgra8888 &&
-                    (info.AlphaType == SKAlphaType.Premul || info.AlphaType == SKAlphaType.Opaque))
-                {
-                    unsafe
-                    {
-                        var srcPtr = skBitmap.GetPixels();
-                        var dstPtr = locked.Address;
-                        var srcStride = skBitmap.RowBytes;
-                        var dstStride = locked.RowBytes;
-                        var copyWidth = Math.Min(srcStride, dstStride);
-
-                        if (srcStride == dstStride)
-                        {
-                            long totalBytes = (long)height * srcStride;
-                            Buffer.MemoryCopy((void*)srcPtr, (void*)dstPtr, totalBytes, totalBytes);
-                        }
-                        else
-                        {
-                            for (int y = 0; y < height; y++)
-                            {
-                                var srcRow = (byte*)srcPtr + (y * srcStride);
-                                var dstRow = (byte*)dstPtr + (y * dstStride);
-                                Buffer.MemoryCopy(srcRow, dstRow, copyWidth, copyWidth);
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    // If ColorType differs, let Skia handle the pixel conversion into the destination buffer
-                    var dstInfo = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
-
-                    // We can read pixels directly into the WriteableBitmap's buffer
-                    // We can read pixels directly into the WriteableBitmap's buffer
-                    // using var pixmap = skBitmap.PeekPixels();
-                    // pixmap?.ReadPixels(dstInfo, locked.Address, locked.RowBytes, 0, 0);
-                    // Or safer if PeekPixels returns null? It shouldn't if we have a bitmap.
-                    // But to be safe and fix the compile error:
-                    var pixmap = skBitmap.PeekPixels();
-                    if (pixmap != null)
-                    {
-                        pixmap.ReadPixels(dstInfo, locked.Address, locked.RowBytes, 0, 0);
-                    }
-                    else
-                    {
-                        // Fallback? Or use GetPixels?
-                        // If PeekPixels is null, maybe pixels aren't allocated.
-                        // But we are converting valid bitmap.
-                        // Force allocation/lock?
-                        IntPtr ptr = skBitmap.GetPixels(); // Forces pixel lock
-                        skBitmap.PeekPixels()?.ReadPixels(dstInfo, locked.Address, locked.RowBytes, 0, 0);
-                    }
-                }
+                avaloniaBitmap.CopyPixels(new PixelRect(avaloniaBitmap.PixelSize), result.GetPixels(), result.ByteCount, result.RowBytes);
+                return result;
             }
-
-            return writeableBitmap;
+            catch (NotSupportedException) { result.Dispose(); }
+            catch { result.Dispose(); throw; }
         }
+
+        // Render targets and uncommon/transcoded formats may not support direct readback.
+        // PNG preserves their declared colours and alpha without guessing a byte layout.
+        using var encoded = new System.IO.MemoryStream();
+        avaloniaBitmap.Save(encoded, PngBitmapEncoderOptions.Default);
+        encoded.Position = 0;
+        return SKBitmap.Decode(encoded) ?? throw new InvalidOperationException("Could not decode bitmap pixels.");
+    }
+
+    public static Bitmap ToAvaloniBitmap(SKBitmap skBitmap)
+    {
+        ArgumentNullException.ThrowIfNull(skBitmap);
+        var result = new WriteableBitmap(new PixelSize(skBitmap.Width, skBitmap.Height),
+            new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+        try
+        {
+            using var locked = result.Lock();
+            if (!TryGetInfo(locked.Size, locked.Format, locked.AlphaFormat, out var destination))
+                throw new NotSupportedException($"Unsupported destination pixel format: {locked.Format}");
+            using var pixels = skBitmap.PeekPixels();
+            if (pixels == null || !pixels.ReadPixels(destination, locked.Address, locked.RowBytes, 0, 0))
+                throw new InvalidOperationException("Could not convert bitmap pixels.");
+            return result;
+        }
+        catch { result.Dispose(); throw; }
+    }
+
+    private static bool TryGetInfo(PixelSize size, PixelFormat format, AlphaFormat alpha, out SKImageInfo info)
+    {
+        var colour = format == PixelFormat.Bgra8888 ? SKColorType.Bgra8888 :
+            format == PixelFormat.Rgba8888 ? SKColorType.Rgba8888 : SKColorType.Unknown;
+        var alphaType = alpha switch
+        {
+            AlphaFormat.Opaque => SKAlphaType.Opaque,
+            AlphaFormat.Unpremul => SKAlphaType.Unpremul,
+            _ => SKAlphaType.Premul
+        };
+        info = new SKImageInfo(size.Width, size.Height, colour, alphaType);
+        return colour != SKColorType.Unknown;
+    }
+
+    private static unsafe void CopyRows(IntPtr source, int sourceStride, IntPtr destination, int destinationStride, int rowBytes, int height)
+    {
+        for (int y = 0; y < height; y++)
+            Buffer.MemoryCopy((byte*)source + y * sourceStride, (byte*)destination + y * destinationStride, rowBytes, rowBytes);
     }
 }
