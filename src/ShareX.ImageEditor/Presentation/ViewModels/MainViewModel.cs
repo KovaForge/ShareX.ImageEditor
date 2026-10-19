@@ -831,6 +831,34 @@ namespace ShareX.ImageEditor.Presentation.ViewModels
         [ObservableProperty]
         private object? _modalContent;
 
+        partial void OnIsModalOpenChanged(bool value) => NotifyModalHostProperties();
+
+        partial void OnModalContentChanged(object? value) => NotifyModalHostProperties();
+
+        /// <summary>
+        /// Editor dialogs paint their own surface and stay in the editor overlay.
+        /// App dialogs, including the update prompt, are hosted by the shell card.
+        /// </summary>
+        public bool IsEditorModalOpen => IsModalOpen && IsEditorOwnedModal(ModalContent);
+
+        public object? EditorModalContent => IsEditorModalOpen ? ModalContent : null;
+
+        public object? ShellModalContent =>
+            IsModalOpen && !IsEditorOwnedModal(ModalContent) ? ModalContent : null;
+
+        public static bool IsEditorOwnedModal(object? modalContent)
+        {
+            string? ns = modalContent?.GetType().Namespace;
+            return ns != null && ns.StartsWith("ShareX.ImageEditor.", StringComparison.Ordinal);
+        }
+
+        private void NotifyModalHostProperties()
+        {
+            OnPropertyChanged(nameof(IsEditorModalOpen));
+            OnPropertyChanged(nameof(EditorModalContent));
+            OnPropertyChanged(nameof(ShellModalContent));
+        }
+
         [RelayCommand]
         private void CloseModal()
         {
