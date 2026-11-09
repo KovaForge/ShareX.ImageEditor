@@ -3,6 +3,6 @@
        files import it so the assembly, file and package versions all follow it; the
        project-level props would otherwise hide the root props and leave 1.0.0. -->
   <PropertyGroup>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
 </Project>

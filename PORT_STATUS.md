@@ -1,11 +1,32 @@
 # ShareX.ImageEditor Port Status
 
-Last updated: 2026-09-26
+Last updated: 2026-11-10
 
 ## Port Source
-- ShareX.ImageEditor commit: `94838f6a4` (latest upstream ShareX commit touching ShareX.ImageEditor as of 2026-09-26)
-- XerahS submodule last synced to: `94838f6a4`
-- XerahS submodule current HEAD before this session: `002de77`
+- ShareX.ImageEditor commit: `8b4f35a1f` (latest upstream ShareX commit touching ShareX.ImageEditor as of 2026-11-10)
+- XerahS submodule last synced to: `8b4f35a1f`
+- XerahS submodule current HEAD before this session: `f34dd43`
+- Library version after this port: `0.3.0` (was `0.2.0`)
+
+## Port Activity (2026-11-10)
+
+- Previous recorded ShareX sync: `94838f6a4`
+- Latest upstream ShareX commit touching ShareX.ImageEditor: `8b4f35a1f` (Merge develop into cross-platform)
+- Result: caught up through `8b4f35a1f`
+- Library version: `0.2.0` -> `0.3.0` (minor: the range adds features)
+- Method: `triage.py` + `sync.py` from `C:\Users\Public\source\repos\ShareX Team\ShareX` (cross-platform), then manual conflict resolution
+- Range size: 55 upstream commits, 376 files. Triage: 39 DIVERGED, 32 NEW, 269 SAFE_SYNC, 6 upstream-deleted, 31 localization (skipped)
+- Risk: high. Upstream now depends on `ShareX.Avalonia`, `ShareX.Platform` and `ShareX.Icons`; none of those are referenced here
+- Commits: `8d3c13e`, `45c8087`, `01dac9f`, `42282ce`, `7e9b5f3`, `6157f30`, `ffb468f`, then grouped `b1ffedc` (intermediate commits only build as a batch); version fix `2b0704f`
+
+### Adaptations kept for XerahS
+- Icons: the ShareX.Icons migration (about 200 effect `IconKey` lines, `EditorIcons`, `IconPresenter`) was reverted to Lucide; new keys map to Lucide (`stamp`, `expand`, `laugh`, `scissors`, `square_round_corner`)
+- Localization: new `Strings.*` call sites became English literals
+- Platform: `ShareX.Platform` graphics services replaced by `FeatureSupport` plus the existing `WindowsEmojiBitmapRenderer` / `WindowsCursorBitmapRenderer`; `FontFamilyResolver` copied in from `ShareX.Avalonia`; `PlaceOnMainWindowScreen` implemented in `AvaloniaIntegration`
+- Wallpaper: `PlatformDesktopWallpaperService` skipped; XerahS keeps its Windows / macOS / Linux wallpaper services
+- Toolbar: the compact / draggable region capture toolbar and `EditorStyles.axaml` were skipped; only the rounded-corners and freehand-arrow buttons were added to the XerahS toolbar. Picker `MinWidth` values stay inline
+- Workspace host APIs (`ConfigureForFullscreenWorkspace`, `LoadWorkspaceImage`, notification/modal cursor positioning) and the PhotoEditor `InternalsVisibleTo` were not ported
+- Root integration: `RegionCaptureAnnotationViewModel` implements `ArrowRoundedCorners` / `FreehandArrow` and hides the Clone tool; the editor tooltip test expects the secondary shortcut
 
 ## Port Activity (2026-09-26)
 

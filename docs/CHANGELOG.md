@@ -2,6 +2,25 @@
 
 All notable changes to the ShareX.ImageEditor project will be documented in this file.
 
+## v0.3.0
+
+Port of ShareX.ImageEditor through ShareX@8b4f35a1f (55 upstream commits since ShareX@94838f6a4).
+
+### Features
+- **Tools**: Add the Clone tool, the Canvas size tool, auto-expanding canvas and a freehand arrow toggle `(b1ffedc)`
+- **Toolbar**: Add secondary toolbar shortcuts defaulting to the numpad keys, and search in the font picker `(b1ffedc, 42282ce)`
+- **Rendering**: Draw emoji with shaped Skia colour fonts on every platform and bundle the classic pan/split cursors; Windows keeps DirectWrite emoji and system cursors `(45c8087)`
+- **Easter eggs**: The CRT shader stays on as a persistent editor effect `(6157f30)`
+
+### Fixes
+- **Effects**: Adjustment effects process cropped subsets row by row instead of overrunning the buffer `(8d3c13e)`
+- **Fonts**: Resolve missing font families to installed fallbacks and validate them before applying `(01dac9f)`
+- **Text**: Shared key handling for text editors, with Shift+Enter for a new line `(7e9b5f3)`
+- **Editor**: Guard image imports across document lifetime, cut before the clipboard clears, unified crop interactions, arrows with sharp corners `(b1ffedc)`
+
+### Build
+- **Version**: The assembly now reports the library version instead of 1.0.0 `(2b0704f)`
+
 ## v0.2.0
 
 ### Features
