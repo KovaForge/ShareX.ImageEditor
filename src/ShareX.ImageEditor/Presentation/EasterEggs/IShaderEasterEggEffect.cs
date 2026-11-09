@@ -23,15 +23,17 @@
 
 #endregion License Information (GPL v3)
 
+using Avalonia;
+using SkiaSharp;
+
 namespace ShareX.ImageEditor.Presentation.EasterEggs;
 
 /// <summary>
-/// Describes a replaceable shader animation. Playback, input detection and editor integration
-/// deliberately live outside effect implementations.
+/// Describes a persistent display effect.
 /// </summary>
 internal interface IShaderEasterEggEffect
 {
     string ShaderSource { get; }
 
-    TimeSpan Duration { get; }
+    void UpdateUniforms(SKRuntimeEffectUniforms uniforms, Size bounds);
 }
