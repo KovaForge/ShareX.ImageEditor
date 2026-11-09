@@ -149,6 +149,9 @@ namespace ShareX.ImageEditor.Presentation.Rendering
             return BitmapConversionHelpers.ToAvaloniBitmap(previewBitmap);
         }
 
+        /// <summary>Draws a standard Windows cursor; bundled cursors are handled by <see cref="CursorBitmapRenderer"/>.</summary>
+        internal static SKBitmap? RenderSystemCursor(CursorType cursorType) => RenderCursorBitmap(cursorType);
+
         private static SKBitmap? RenderCursorBitmap(CursorType cursorType)
         {
             IntPtr cursorHandle = TryLoadWinFormsCursorHandle(cursorType);

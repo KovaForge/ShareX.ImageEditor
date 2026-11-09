@@ -155,6 +155,9 @@ public static class WindowsEmojiBitmapRenderer
         }
     }
 
+    /// <summary>Draws a glyph with DirectWrite colour fonts; null when Direct2D is unavailable.</summary>
+    internal static SKBitmap? RenderNative(string glyph, int canvasSize, float fontSize) => RenderWithDirect2D(glyph, canvasSize, fontSize);
+
     private static SKBitmap? RenderWithDirect2D(string glyph, int canvasSize, float fontSize)
     {
         if (!OperatingSystem.IsWindows() || D2DFactory == null || DWriteFactoryInstance == null || WicFactory == null)
