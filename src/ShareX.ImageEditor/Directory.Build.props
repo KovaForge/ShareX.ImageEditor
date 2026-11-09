@@ -1,4 +1,5 @@
 <Project>
+  <Import Project="$(MSBuildThisFileDirectory)../../Version.props" />
   <PropertyGroup>
     <_IntermediatePathSuffix></_IntermediatePathSuffix>
     <_IntermediatePathSuffix Condition="'$(OS)' != ''">$(_IntermediatePathSuffix)os-$(OS)/</_IntermediatePathSuffix>

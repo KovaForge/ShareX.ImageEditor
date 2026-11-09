@@ -1,0 +1,8 @@
+<Project>
+  <!-- Single source of the ShareX.ImageEditor library version. Both Directory.Build.props
+       files import it so the assembly, file and package versions all follow it; the
+       project-level props would otherwise hide the root props and leave 1.0.0. -->
+  <PropertyGroup>
+    <Version>0.2.0</Version>
+  </PropertyGroup>
+</Project>
