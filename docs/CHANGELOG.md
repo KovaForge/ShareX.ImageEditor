@@ -20,6 +20,7 @@ Port of ShareX.ImageEditor through ShareX@8b4f35a1f (55 upstream commits since S
 
 ### Build
 - **Version**: The assembly now reports the library version instead of 1.0.0 `(2b0704f)`
+- **Dependencies**: Avalonia 12.1.0 -> 12.1.6, Tmds.DBus 0.94.2 -> 0.95.2; SkiaSharp stays on 3.119.4 for compilation (hosts run SkiaSharp 4.x)
 
 ## v0.2.0
 
