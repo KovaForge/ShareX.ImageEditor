@@ -23,8 +23,8 @@
 
 #endregion License Information (GPL v3)
 
-using ShareX.ImageEditor.Core.ImageEffects.Parameters;
 using ShareX.ImageEditor.Presentation.Theming;
+using ShareX.ImageEditor.Core.ImageEffects.Parameters;
 using SkiaSharp;
 
 namespace ShareX.ImageEditor.Core.ImageEffects.Filters;
@@ -126,7 +126,7 @@ public sealed class MacOSWindowImageEffect : ImageEffectBase
         {
             SKColor textColor = DarkMode ? new SKColor(220, 220, 220) : new SKColor(74, 74, 74);
             using SKTypeface titleTypeface = SKTypeface.FromFamilyName("San Francisco", SKFontStyleWeight.Medium, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
-                                            ?? SKTypeface.FromFamilyName("Segoe UI", SKFontStyleWeight.Medium, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
+                                            ?? SKTypeface.FromFamilyName(FontFamilyResolver.Resolve("Segoe UI"), SKFontStyleWeight.Medium, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
                                             ?? SKTypeface.Default;
             using SKFont titleFont = new SKFont(titleTypeface, 13f);
             using SKPaint textPaint = new()
