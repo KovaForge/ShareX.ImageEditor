@@ -82,6 +82,8 @@ public partial class AnnotationToolbar : UserControl
     public event EventHandler? ShadowSettingsChanged;
     public event EventHandler<bool>? SpeechBalloonTailChanged;
     public event EventHandler<bool>? EffectEllipseChanged;
+    public event EventHandler<bool>? ArrowRoundedCornersChanged;
+    public event EventHandler<bool>? FreehandArrowChanged;
     public event EventHandler<Control>? FavoriteEffectsMenuRequested;
 
     public AnnotationToolbar()
@@ -459,6 +461,24 @@ public partial class AnnotationToolbar : UserControl
         {
             toolbar.SpeechBalloonTail = !toolbar.SpeechBalloonTail;
             SpeechBalloonTailChanged?.Invoke(this, toolbar.SpeechBalloonTail);
+        }
+    }
+
+    private void OnArrowRoundedCornersClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is IAnnotationToolbarAdapter toolbar)
+        {
+            toolbar.ArrowRoundedCorners = !toolbar.ArrowRoundedCorners;
+            ArrowRoundedCornersChanged?.Invoke(this, toolbar.ArrowRoundedCorners);
+        }
+    }
+
+    private void OnFreehandArrowClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is IAnnotationToolbarAdapter toolbar)
+        {
+            toolbar.FreehandArrow = !toolbar.FreehandArrow;
+            FreehandArrowChanged?.Invoke(this, toolbar.FreehandArrow);
         }
     }
 

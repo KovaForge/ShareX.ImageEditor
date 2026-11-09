@@ -73,6 +73,7 @@ namespace ShareX.ImageEditor.Presentation.Views
         private bool _isSyncingFromVM;
         private bool _isSyncingToVM;
         private bool _skipNextCoreImageChanged;
+        private readonly EditorImageOperationLifetime _imageOperations = new();
         private bool _suppressNextHistoryDirtyMark;
         private bool _pendingZoomToFitOnOpen;
         private int _pendingZoomToFitRetryCount;
@@ -212,6 +213,12 @@ namespace ShareX.ImageEditor.Presentation.Views
         {
             base.OnPropertyChanged(change);
 
+            if (change.Property == DataContextProperty)
+            {
+                _imageOperations?.Invalidate();
+                _cancelPendingImageInsertion?.Invoke();
+            }
+
             if (change.Property == UseBuiltInToolbarsProperty && _builtInToolbarsHost != null)
             {
                 UpdateBuiltInToolbars();
@@ -249,6 +256,7 @@ namespace ShareX.ImageEditor.Presentation.Views
         {
             UpdateDpiScaleFromTopLevel();
             RequestOverlayCanvasLayoutUpdate();
+            UpdateEmojiPickerPosition();
         }
 
         /// <summary>
@@ -456,6 +464,7 @@ namespace ShareX.ImageEditor.Presentation.Views
                     else if (vm.SelectedAnnotation is FreehandAnnotation freehand)
                     {
                         vm.SelectedBorderStyle = freehand.BorderStyle;
+                        vm.FreehandArrow = freehand.ShowArrowHead;
                     }
                     else if (vm.SelectedAnnotation is CursorAnnotation cursor)
                     {
@@ -464,6 +473,7 @@ namespace ShareX.ImageEditor.Presentation.Views
                     else if (vm.SelectedAnnotation is ArrowAnnotation arrow)
                     {
                         vm.SelectedArrowStyle = arrow.Style;
+                        vm.ArrowRoundedCorners = arrow.RoundedCorners;
                     }
                     else if (vm.SelectedAnnotation is EllipseAnnotation ellipse)
                     {
@@ -513,6 +523,11 @@ namespace ShareX.ImageEditor.Presentation.Views
                 _parentWindow.KeyDown += OnKeyDown;
                 _parentWindow.KeyUp += OnKeyUp;
                 _parentWindow.Activated += OnWindowActivated;
+                _parentWindow.PositionChanged += OnEditorWindowPositionChanged;
+                if (_parentWindow.Screens is { } screens)
+                {
+                    screens.Changed += OnEditorScreensChanged;
+                }
             }
 
             // Give the editor initial focus
@@ -557,6 +572,8 @@ namespace ShareX.ImageEditor.Presentation.Views
             base.OnUnloaded(e);
 
             ThemeManager.ThemeChanged -= OnThemeChanged;
+            InvalidateImageOperations();
+
             DetachParentWindow();
             DetachViewModel();
 
@@ -939,8 +956,13 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (sender is MainViewModel vm)
+            if (sender is MainViewModel vm && IsEditorContextCurrent(vm))
             {
+                if (e.PropertyName == nameof(MainViewModel.IsSettingsPanelOpen) && vm.IsSettingsPanelOpen)
+                {
+                    EnsureBackgroundSettingsPanel();
+                }
+
                 if (e.PropertyName == nameof(MainViewModel.SelectedColor))
                 {
                     ApplySelectedColor(vm.SelectedColor);
@@ -964,8 +986,13 @@ namespace ShareX.ImageEditor.Presentation.Views
                 else if (e.PropertyName == nameof(MainViewModel.PreviewImage))
                 {
                     bool isInitialImageLoad = vm.PreviewImage != null && _editorCore.SourceImage == null;
+                    OnImageChangedDuringCanvasResize();
                     ClearEffectPreviewCache();
-                    _zoomController.ResetScrollViewerOffset();
+                    // Auto canvas expansion keeps the current scroll position.
+                    if (!_suppressScrollResetForAutoExpand)
+                    {
+                        _zoomController.ResetScrollViewerOffset();
+                    }
                     // During smart padding, use UpdateSourceImage to preserve history and annotations
                     if (vm.IsSmartPaddingInProgress)
                     {
@@ -988,22 +1015,13 @@ namespace ShareX.ImageEditor.Presentation.Views
                 else if (e.PropertyName == nameof(MainViewModel.ActiveTool))
                 {
                     _editorCore.ActiveTool = vm.ActiveTool;
+                    CancelCanvasResize();
+                    _inputController.CancelClone();
+                    _inputController.CancelCrop();
 
                     if (vm.ActiveTool == EditorTool.Crop)
                     {
-                        if (vm.Options.QuickCrop)
-                        {
-                            _inputController.CancelCrop();
-                        }
-                        else
-                        {
-                            _inputController.ActivateCropToFullImage();
-                        }
                         this.Focus();
-                    }
-                    else
-                    {
-                        _inputController.CancelCrop();
                     }
                     _selectionController.ClearSelection();
                     UpdateCursorForTool(); // ISSUE-018 fix: Update cursor feedback for active tool
@@ -1014,6 +1032,15 @@ namespace ShareX.ImageEditor.Presentation.Views
                     {
                         EnsureEffectBrowserPanel(vm).FocusSearchBox();
                     }
+                }
+                else if (e.PropertyName == nameof(MainViewModel.ModalContent) &&
+                    vm.ModalContent is EmojiPickerDialogViewModel)
+                {
+                    PositionEmojiPickerOnActiveMonitor();
+                }
+                else if (e.PropertyName == nameof(MainViewModel.IsModalOpen) && !vm.IsModalOpen)
+                {
+                    ResetModalContentPosition();
                 }
                 else if (e.PropertyName == nameof(MainViewModel.StepStartNumber))
                 {
@@ -1323,13 +1350,14 @@ namespace ShareX.ImageEditor.Presentation.Views
             }
 
             _workspaceDisposed = true;
+            _imageOperations.Close();
             _pendingAutoCopyImageVersion++;
             _cancelPendingImageInsertion?.Invoke();
             ThemeManager.ThemeChanged -= OnThemeChanged;
             DetachParentWindow();
             DetachViewModel();
             UnhookAnnotationToolbarEvents();
-            StopEasterEggs();
+            DisposeEasterEggs();
             _selectionController.RequestUpdateEffect -= OnRequestUpdateEffect;
             ClearEffectPreviewCache();
             this.FindControl<SpotlightOverlayControl>("SpotlightOverlayControl")?.Dispose();
@@ -1366,6 +1394,8 @@ namespace ShareX.ImageEditor.Presentation.Views
         {
             if (vm.PreviewImage == null || _canvasControl == null) return;
             if (_isSyncingToVM) return; // Ignore updates that we just pushed to VM
+
+            InvalidateImageOperations();
 
             try
             {
@@ -1557,7 +1587,7 @@ namespace ShareX.ImageEditor.Presentation.Views
             _inputController.OnKeyDown(sender ?? this, e);
 
             // Skip shortcuts when the user is typing in a text field
-            if (_parentWindow?.FocusManager?.GetFocusedElement() is TextBox) return;
+            if (e.Source is TextBox || _parentWindow?.FocusManager?.GetFocusedElement() is TextBox) return;
 
             // Skip shortcuts when a modal dialog is open (e.g. emoji picker search box)
             if (DataContext is MainViewModel { IsModalOpen: true }) return;
@@ -1587,7 +1617,7 @@ namespace ShareX.ImageEditor.Presentation.Views
                         e.Handled = true;
                     }
                 }
-                else if (e.KeyModifiers.HasFlag(KeyModifiers.Control | KeyModifiers.Shift))
+                else if (e.KeyModifiers.HasFlag(ToolbarHotkeyHelper.CommandModifier | KeyModifiers.Shift))
                 {
                     if (vm.TrySelectToolForToolbarHotkey(e.Key, e.KeyModifiers))
                     {
@@ -1616,7 +1646,7 @@ namespace ShareX.ImageEditor.Presentation.Views
                         case Key.S: vm.SaveAsCommand.Execute(null); e.Handled = true; break;
                     }
                 }
-                else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+                else if (e.KeyModifiers.HasFlag(ToolbarHotkeyHelper.CommandModifier) && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
                 {
                     if (vm.TrySelectToolForToolbarHotkey(e.Key, e.KeyModifiers))
                     {
@@ -1694,7 +1724,7 @@ namespace ShareX.ImageEditor.Presentation.Views
                             case Key.PageDown: _editorCore.SendBackward(); e.Handled = true; break;
 
                             case Key.Enter:
-                                if (_inputController.TryConfirmCrop())
+                                if (TryConfirmCanvasResize() || _inputController.TryConfirmCrop())
                                 {
                                     e.Handled = true;
                                 }
@@ -1737,7 +1767,7 @@ namespace ShareX.ImageEditor.Presentation.Views
             }
 
             // Skip shortcuts when the user is typing in a text field
-            if (_parentWindow?.FocusManager?.GetFocusedElement() is TextBox) return;
+            if (e.Source is TextBox || _parentWindow?.FocusManager?.GetFocusedElement() is TextBox) return;
 
             if (e.Key is Key.LeftCtrl or Key.RightCtrl && !_inputController.IsDrawingActive)
             {
@@ -1749,7 +1779,7 @@ namespace ShareX.ImageEditor.Presentation.Views
                 switch (e.Key)
                 {
                     case Key.Escape:
-                        if (_inputController.CancelCrop())
+                        if (CancelCanvasResize() || _inputController.CancelClone() || _inputController.CancelCrop())
                         {
                             e.Handled = true;
                         }
@@ -1794,6 +1824,7 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         private void OnDeselectRequested(object? sender, EventArgs e)
         {
+            _inputController.CancelClone();
             _inputController.CancelCrop();
             _selectionController.ClearSelection();
         }
@@ -1816,22 +1847,29 @@ namespace ShareX.ImageEditor.Presentation.Views
                 return null;
             }
 
-            AnnotationVisualFactory.UpdateVisualControl(
-                control,
-                annotation,
-                AnnotationVisualMode.Persisted,
-                _editorCore.CanvasSize.Width,
-                _editorCore.CanvasSize.Height);
-
-            // Effect annotations require bitmap-backed fills from current source image.
-            if (annotation is BaseEffectAnnotation)
+            try
             {
-                OnRequestUpdateEffect(control);
+                AnnotationVisualFactory.UpdateVisualControl(
+                    control,
+                    annotation,
+                    AnnotationVisualMode.Persisted,
+                    _editorCore.CanvasSize.Width,
+                    _editorCore.CanvasSize.Height);
+
+                // Effect annotations require bitmap-backed fills from current source image.
+                if (annotation is BaseEffectAnnotation) OnRequestUpdateEffect(control);
+                SyncAnnotationCursor(control);
+                return control;
             }
-
-            SyncAnnotationCursor(control);
-
-            return control;
+            catch
+            {
+                if (control is Image { Tag: ImageAnnotation } image)
+                {
+                    (image.Source as IDisposable)?.Dispose();
+                    image.Source = null;
+                }
+                throw;
+            }
         }
 
         private void PerformDelete()
@@ -1977,6 +2015,8 @@ namespace ShareX.ImageEditor.Presentation.Views
         /// </summary>
         private async void OnDrop(object? sender, DragEventArgs e)
         {
+            if (DataContext is not MainViewModel vm) return;
+            using var operation = BeginImageOperation(vm);
             var droppedItems = e.DataTransfer.TryGetFiles()?.ToList() ?? new List<IStorageItem>();
 
             // Fallback for providers that expose files only through raw items.
@@ -1995,35 +2035,25 @@ namespace ShareX.ImageEditor.Presentation.Views
             {
                 foreach (var item in droppedItems)
                 {
+                    if (!operation.IsCurrent) return;
                     if (item is IStorageFile file)
                     {
-                        var ext = System.IO.Path.GetExtension(file.Name)?.ToLowerInvariant();
-
-                        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".gif" || ext == ".webp" || ext == ".ico" || ext == ".tiff" || ext == ".tif")
+                        if (IsImageFileName(file.Name))
                         {
                             try
                             {
-                                using var stream = await file.OpenReadAsync();
-                                using var memStream = new System.IO.MemoryStream();
-                                await stream.CopyToAsync(memStream);
-                                memStream.Position = 0;
-                                var skBitmap = SKBitmap.Decode(memStream);
-                                if (skBitmap != null)
-                                {
-                                    // If there's no base image yet (common in embedded MainWindow editor),
-                                    // use the dropped file as the main preview image.
-                                    if (DataContext is MainViewModel vm && !vm.HasPreviewImage)
+                                bool useAsBaseImage = !vm.HasPreviewImage;
+                                await operation.RunOwnedAsync(_ => ReadImageFileAsync(file, operation),
+                                    async image =>
                                     {
-                                        vm.UpdatePreview(skBitmap, clearAnnotations: true);
-                                        return;
-                                    }
-
-                                    await InsertExternalImageAsync(skBitmap, file.Path.LocalPath);
-                                }
+                                        bool inserted = await InsertExternalImageAsync(image, operation);
+                                        if (inserted && useAsBaseImage && IsEditorContextCurrent(vm)) QueueAutoCopyImageToClipboard(vm);
+                                        return inserted;
+                                    });
                             }
                             catch (Exception ex)
                             {
-                                EditorServices.ReportWarning(nameof(EditorView), $"Failed to decode dropped image '{file.Name}'.", ex);
+                                if (operation.IsCurrent) EditorServices.ReportWarning(nameof(EditorView), $"Failed to decode dropped image '{file.Name}'.", ex);
                             }
                         }
                     }
@@ -2031,161 +2061,62 @@ namespace ShareX.ImageEditor.Presentation.Views
             }
         }
 
-        private async void OnBrowseBackgroundImageClick(object? sender, RoutedEventArgs e)
+        /// <summary>
+        /// Creates the background settings panel the first time the sidebar opens. The closed sidebar is only
+        /// collapsed to zero width, so building the panel up front would cost every editor and region capture.
+        /// </summary>
+        private void EnsureBackgroundSettingsPanel()
         {
-            if (DataContext is not MainViewModel vm)
-            {
-                return;
-            }
-
-            TopLevel? topLevel = TopLevel.GetTopLevel(this);
-            if (topLevel?.StorageProvider == null)
-            {
-                return;
-            }
-
-            IReadOnlyList<IStorageFile> files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-            {
-                Title = Strings.EditorView_SelectBackgroundImage,
-                AllowMultiple = false,
-                FileTypeFilter = [FilePickerFileTypes.ImageAll]
-            });
-
-            if (files.Count > 0)
-            {
-                vm.SetBackgroundImagePath(files[0].Path.LocalPath);
-            }
-        }
-
-        private void OnGradientColor1PreviewPointerPressed(object? sender, PointerPressedEventArgs e)
-        {
-            OpenBackgroundColorPicker(BackgroundGradientColor1Popup, BackgroundGradientColor2Popup, BackgroundColorPopup);
-            e.Handled = true;
-        }
-
-        private void OnGradientColor2PreviewPointerPressed(object? sender, PointerPressedEventArgs e)
-        {
-            OpenBackgroundColorPicker(BackgroundGradientColor2Popup, BackgroundGradientColor1Popup, BackgroundColorPopup);
-            e.Handled = true;
-        }
-
-        private void OnBackgroundColorPreviewPointerPressed(object? sender, PointerPressedEventArgs e)
-        {
-            OpenBackgroundColorPicker(BackgroundColorPopup, BackgroundGradientColor1Popup, BackgroundGradientColor2Popup);
-            e.Handled = true;
-        }
-
-        private static void OpenBackgroundColorPicker(Popup popupToOpen, params Popup[] popupsToClose)
-        {
-            foreach (Popup popupToClose in popupsToClose)
-            {
-                popupToClose.IsOpen = false;
-            }
-
-            popupToOpen.IsOpen = true;
+            BackgroundSettingsSidebar.Child ??= new BackgroundSettingsPanel();
         }
 
         private void OnNewImageRequested(object? sender, EventArgs e)
         {
-            if (DataContext is not MainViewModel vm)
-            {
-                return;
-            }
-
-            var dialog = new NewImageDialogViewModel(
-                onOk: (result) =>
+            if (DataContext is not MainViewModel vm || !IsImageRequestCurrent(sender, vm)) return;
+            NewImageDialogViewModel? dialog = null;
+            dialog = new NewImageDialogViewModel(
+                onOk: result =>
                 {
+                    if (!IsEditorContextCurrent(vm) || !vm.IsModalOpen || !ReferenceEquals(vm.ModalContent, dialog)) return;
                     vm.IsModalOpen = false;
-
                     var color = result.Transparent ? SKColors.Transparent :
                         new SKColor(result.BackgroundColor.R, result.BackgroundColor.G, result.BackgroundColor.B, result.BackgroundColor.A);
-
-                    var skBitmap = new SKBitmap(new SKImageInfo(result.Width, result.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
-                    using var canvas = new SKCanvas(skBitmap);
-                    canvas.Clear(color);
-
-                    // Clear annotation visuals
-                    var annotationCanvas = this.FindControl<Canvas>("AnnotationCanvas");
-                    annotationCanvas?.Children.Clear();
-                    RefreshSpotlightOverlay();
-                    _selectionController.ClearSelection();
-
-                    // Load fresh image into core (clears history and annotations)
-                    _skipNextCoreImageChanged = true;
-                    _suppressNextHistoryDirtyMark = true;
-                    _editorCore.LoadImage(skBitmap);
-
-                    // Initialize canvas control
-                    _canvasControl?.Initialize(skBitmap.Width, skBitmap.Height);
-                    RenderCore();
-
-                    // Sync to VM
-                    try
-                    {
-                        _isSyncingToVM = true;
-                        vm.ImageFilePath = null;
-                        vm.IsDirty = false;
-                        vm.HasAnnotations = false;
-                        vm.UpdateCoreHistoryState(_editorCore.CanUndo, _editorCore.CanRedo);
-                        vm.UpdatePreviewImageOnly(skBitmap, syncSourceState: true);
-                    }
-                    finally
-                    {
-                        _isSyncingToVM = false;
-                    }
-
-                    vm.ShowNewImageNotification(skBitmap.Width, skBitmap.Height);
+                    using var image = new EditorImportedImage(new SKBitmap(
+                        new SKImageInfo(result.Width, result.Height, SKColorType.Bgra8888, SKAlphaType.Premul)));
+                    using (var canvas = new SKCanvas(image.Bitmap)) canvas.Clear(color);
+                    LoadBitmapIntoEditor(vm, image.TakeBitmap(), null);
+                    vm.ShowNewImageNotification(result.Width, result.Height);
                 },
                 onCancel: () =>
                 {
-                    vm.IsModalOpen = false;
-                }
-            );
-
+                    if (IsEditorContextCurrent(vm) && ReferenceEquals(vm.ModalContent, dialog)) vm.IsModalOpen = false;
+                });
             vm.ModalContent = dialog;
             vm.IsModalOpen = true;
         }
 
         private async void OnOpenImageRequested(object? sender, EventArgs e)
         {
-            if (DataContext is not MainViewModel vm)
+            if (DataContext is not MainViewModel vm || !IsImageRequestCurrent(sender, vm)) return;
+            using var operation = BeginImageOperation(vm);
+            try
             {
-                return;
+                await operation.RunOwnedAsync(_ => PickImageBitmapAsync(Strings.EditorView_OpenImage, operation), image =>
+                {
+                    LoadBitmapIntoEditor(vm, image.TakeBitmap(), image.SourceFilePath);
+                    if (!string.IsNullOrEmpty(image.SourceFilePath)) vm.ShowOpenImageNotification(image.SourceFilePath);
+                    return Task.FromResult(true);
+                });
             }
-
-            TopLevel? topLevel = TopLevel.GetTopLevel(this);
-            if (topLevel?.StorageProvider == null)
+            catch (Exception ex)
             {
-                return;
-            }
-
-            IReadOnlyList<IStorageFile> files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-            {
-                Title = Strings.EditorView_OpenImage,
-                AllowMultiple = false,
-                FileTypeFilter = [FilePickerFileTypes.ImageAll]
-            });
-
-            if (files.Count > 0)
-            {
-                string filePath = files[0].Path.LocalPath;
-
-                using var stream = await files[0].OpenReadAsync();
-                using var memStream = new MemoryStream();
-                await stream.CopyToAsync(memStream);
-                memStream.Position = 0;
-
-                var skBitmap = SKBitmap.Decode(memStream);
-                if (skBitmap == null) return;
-
-                LoadBitmapIntoEditor(vm, skBitmap, filePath);
-                vm.ShowOpenImageNotification(filePath);
+                if (IsEditorContextCurrent(vm)) EditorServices.ReportWarning(nameof(EditorView), "Failed to open image.", ex);
             }
         }
 
         private void OnStartScreenRequested(object? sender, EventArgs e)
         {
-            if (DataContext is not MainViewModel vm) return;
+            if (DataContext is not MainViewModel vm || !IsImageRequestCurrent(sender, vm)) return;
 
             EnsureStartScreenDialog(vm);
         }
@@ -2199,45 +2130,53 @@ namespace ShareX.ImageEditor.Presentation.Views
             }
 
             StartScreenDialogViewModel? dialog = null;
+            bool IsCurrent() => IsEditorContextCurrent(vm) && vm.IsModalOpen && ReferenceEquals(vm.ModalContent, dialog);
 
             dialog = new StartScreenDialogViewModel(
                 recentFiles: vm.RecentImageFiles,
                 onNewImage: () =>
                 {
+                    if (!IsCurrent()) return;
                     vm.CloseModalCommand.Execute(null);
                     vm.NewImageCommand.Execute(null);
                 },
                 onOpenFile: () =>
                 {
+                    if (!IsCurrent()) return;
                     vm.CloseModalCommand.Execute(null);
                     vm.OpenImageCommand.Execute(null);
                 },
                 onLoadFromClipboard: () =>
                 {
+                    if (!IsCurrent()) return;
                     vm.RequestLoadFromClipboard();
                 },
                 onShowUrlInput: () =>
                 {
-                    if (dialog != null)
+                    if (IsCurrent() && dialog != null)
                     {
                         _ = PrepareStartScreenUrlInputAsync(dialog);
                     }
                 },
                 onSubmitUrl: url =>
                 {
+                    if (!IsCurrent()) return;
                     vm.RequestLoadFromUrl(url);
                 },
                 onClose: () =>
                 {
+                    if (!IsCurrent()) return;
                     vm.CloseModalCommand.Execute(null);
                 },
                 onExit: () =>
                 {
+                    if (!IsCurrent()) return;
                     vm.CloseModalCommand.Execute(null);
                     vm.ExitEditorCommand.Execute(null);
                 },
                 onOpenRecentFile: path =>
                 {
+                    if (!IsCurrent()) return;
                     vm.RequestLoadRecentFile(path);
                 });
 
@@ -2249,106 +2188,64 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         private async Task PrepareStartScreenUrlInputAsync(StartScreenDialogViewModel dialog)
         {
+            if (DataContext is not MainViewModel vm) return;
+            using var operation = BeginStartScreenImageOperation(vm, dialog);
             string? clipboardUrl = null;
-
             try
             {
-                var topLevel = TopLevel.GetTopLevel(this);
-                if (topLevel?.Clipboard != null)
+                if (operation.IsCurrent && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
                 {
-                    var text = await topLevel.Clipboard.TryGetTextAsync();
+                    var text = await clipboard.TryGetTextAsync();
                     if (!string.IsNullOrWhiteSpace(text))
                     {
                         text = text.Trim();
                         if (Uri.TryCreate(text, UriKind.Absolute, out var uri) &&
-                            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-                        {
-                            clipboardUrl = text;
-                        }
+                            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)) clipboardUrl = text;
                     }
                 }
             }
             catch
             {
-                // Ignore clipboard read errors while preparing the inline URL entry.
+                // Preparing URL entry can proceed without clipboard text.
             }
-
-            dialog.ShowUrlInput(clipboardUrl);
+            if (operation.IsCurrent) dialog.ShowUrlInput(clipboardUrl);
         }
+
+        private EditorImageOperationLifetime.Operation BeginStartScreenImageOperation(MainViewModel vm, object? dialog) =>
+            _imageOperations.Begin(() => IsEditorContextCurrent(vm) && ReferenceEquals(vm.ModalContent, dialog) &&
+                (dialog == null || vm.IsModalOpen));
 
         private void ShowStartScreenStatus(MainViewModel vm, string message)
         {
+            if (!IsEditorContextCurrent(vm)) return;
             var dialog = EnsureStartScreenDialog(vm);
             dialog.ShowStatus(message);
         }
 
         private async void OnLoadFromClipboardRequested(object? sender, EventArgs e)
         {
-            if (DataContext is not MainViewModel vm) return;
-
-            var topLevel = TopLevel.GetTopLevel(this);
-            if (topLevel?.Clipboard == null)
+            if (DataContext is not MainViewModel vm || !IsImageRequestCurrent(sender, vm)) return;
+            using var operation = BeginStartScreenImageOperation(vm, vm.ModalContent);
+            if (!operation.IsCurrent) return;
+            if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
             {
                 ShowStartScreenStatus(vm, "Failed to load image from clipboard.");
                 return;
             }
-
             try
             {
-                var clipboard = topLevel.Clipboard;
-
-                // Try to get bitmap from clipboard
-                var clipboardBitmap = await clipboard.TryGetBitmapAsync();
-                if (clipboardBitmap != null)
+                bool loaded = await operation.RunOwnedAsync(_ => ReadClipboardImageAsync(clipboard, operation,
+                    filesFirst: false, filterFilesByExtension: false), image =>
                 {
-                    using var ms = new MemoryStream();
-                    clipboardBitmap.Save(ms, PngBitmapEncoderOptions.Default);
-                    (clipboardBitmap as IDisposable)?.Dispose();
-                    ms.Position = 0;
-
-                    var skBitmap = SKBitmap.Decode(ms);
-                    if (skBitmap != null)
-                    {
-                        vm.CloseModalCommand.Execute(null);
-                        LoadBitmapIntoEditor(vm, skBitmap, null);
-                        return;
-                    }
-                }
-
-                // Try files
-                var files = await clipboard.TryGetFilesAsync();
-                if (files != null)
-                {
-                    foreach (var file in files)
-                    {
-                        if (file is not IStorageFile storageFile) continue;
-
-                        try
-                        {
-                            using var stream = await storageFile.OpenReadAsync();
-                            using var memStream = new MemoryStream();
-                            await stream.CopyToAsync(memStream);
-                            memStream.Position = 0;
-
-                            var skBitmap = SKBitmap.Decode(memStream);
-                            if (skBitmap != null)
-                            {
-                                vm.CloseModalCommand.Execute(null);
-                                LoadBitmapIntoEditor(vm, skBitmap, storageFile.Path.LocalPath);
-                                return;
-                            }
-                        }
-                        catch
-                        {
-                            // Try next file
-                        }
-                    }
-                }
-
-                ShowStartScreenStatus(vm, "Failed to load image from clipboard.\nClipboard does not contain an image.");
+                    vm.CloseModalCommand.Execute(null);
+                    LoadBitmapIntoEditor(vm, image.TakeBitmap(), image.SourceFilePath);
+                    return Task.FromResult(true);
+                });
+                if (!loaded && operation.IsCurrent) ShowStartScreenStatus(vm, "Failed to load image from clipboard.\nClipboard does not contain an image.");
             }
             catch (Exception ex)
             {
+                if (!operation.IsCurrent) return;
                 EditorServices.ReportError(nameof(EditorView), "Failed to load image from clipboard.", ex);
                 ShowStartScreenStatus(vm, "Failed to load image from clipboard.");
             }
@@ -2356,47 +2253,45 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         private async void OnLoadFromUrlRequested(object? sender, string url)
         {
-            if (DataContext is not MainViewModel vm) return;
-
-            StartScreenDialogViewModel? startScreenDialog = vm.ModalContent as StartScreenDialogViewModel;
-            startScreenDialog?.ClearStatus();
-            startScreenDialog?.SetUrlLoading(true);
-
+            if (DataContext is not MainViewModel vm || !IsImageRequestCurrent(sender, vm)) return;
+            StartScreenDialogViewModel? dialog = vm.ModalContent as StartScreenDialogViewModel;
+            using var operation = BeginStartScreenImageOperation(vm, vm.ModalContent);
+            if (!operation.IsCurrent) return;
+            dialog?.ClearStatus();
+            dialog?.SetUrlLoading(true);
             try
             {
-                using var httpClient = new HttpClient();
-                httpClient.Timeout = TimeSpan.FromSeconds(30);
-                httpClient.DefaultRequestHeaders.Add("User-Agent", "ShareX");
-
-                var response = await httpClient.GetAsync(url);
-                response.EnsureSuccessStatusCode();
-
-                using var stream = await response.Content.ReadAsStreamAsync();
-                using var memStream = new MemoryStream();
-                await stream.CopyToAsync(memStream);
-                memStream.Position = 0;
-
-                var skBitmap = SKBitmap.Decode(memStream);
-                if (skBitmap == null)
+                bool loaded = await operation.RunOwnedAsync(async cancellationToken =>
                 {
-                    startScreenDialog?.SetUrlLoading(false);
-                    startScreenDialog?.ShowStatus("The URL does not point to a valid image.");
-                    return;
-                }
-
-                vm.CloseModalCommand.Execute(null);
-                LoadBitmapIntoEditor(vm, skBitmap, null);
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                    using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+                    httpClient.DefaultRequestHeaders.Add("User-Agent", "XerahS");
+                    using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+                    response.EnsureSuccessStatusCode();
+                    return await EditorImageFileReader.ReadAsync(
+                        () => response.Content.ReadAsStreamAsync(timeout.Token), operation, null, timeout.Token);
+                }, image =>
+                {
+                    vm.CloseModalCommand.Execute(null);
+                    LoadBitmapIntoEditor(vm, image.TakeBitmap(), null);
+                    return Task.FromResult(true);
+                });
+                if (!loaded && operation.IsCurrent) dialog?.ShowStatus("The URL does not point to a valid image.");
             }
             catch (Exception ex)
             {
-                startScreenDialog?.SetUrlLoading(false);
-                startScreenDialog?.ShowStatus($"Failed to download image: {ex.Message}");
+                if (operation.IsCurrent) dialog?.ShowStatus(string.Format("Failed to download image: {0}", ex.Message));
+            }
+            finally
+            {
+                if (operation.IsCurrent) dialog?.SetUrlLoading(false);
             }
         }
 
         private void OnLoadRecentFileRequested(object? sender, string filePath)
         {
-            if (DataContext is not MainViewModel vm) return;
+            if (DataContext is not MainViewModel vm || !IsImageRequestCurrent(sender, vm)) return;
 
             if (!File.Exists(filePath))
             {
@@ -2412,8 +2307,8 @@ namespace ShareX.ImageEditor.Presentation.Views
             try
             {
                 using var stream = File.OpenRead(filePath);
-                var skBitmap = SKBitmap.Decode(stream);
-                if (skBitmap == null)
+                using var image = SKBitmap.Decode(stream) is { } bitmap ? new EditorImportedImage(bitmap, filePath) : null;
+                if (image == null)
                 {
                     EditorServices.ReportError(nameof(EditorView), $"Failed to decode image file '{filePath}'.");
                     ShowStartScreenStatus(vm, $"Failed to load image file.\n{filePath}");
@@ -2421,7 +2316,7 @@ namespace ShareX.ImageEditor.Presentation.Views
                 }
 
                 vm.CloseModalCommand.Execute(null);
-                LoadBitmapIntoEditor(vm, skBitmap, filePath);
+                LoadBitmapIntoEditor(vm, image.TakeBitmap(), filePath);
                 vm.ShowOpenImageNotification(filePath);
             }
             catch (Exception ex)
@@ -2433,16 +2328,27 @@ namespace ShareX.ImageEditor.Presentation.Views
 
         private void LoadBitmapIntoEditor(MainViewModel vm, SKBitmap skBitmap, string? filePath)
         {
-            // Clear annotation visuals
-            var annotationCanvas = this.FindControl<Canvas>("AnnotationCanvas");
-            annotationCanvas?.Children.Clear();
-            RefreshSpotlightOverlay();
-            _selectionController.ClearSelection();
-
-            // Load fresh image into core (clears history and annotations)
-            _skipNextCoreImageChanged = true;
-            _suppressNextHistoryDirtyMark = true;
-            _editorCore.LoadImage(skBitmap);
+            if (!IsEditorContextCurrent(vm))
+            {
+                skBitmap.Dispose();
+                return;
+            }
+            try
+            {
+                InvalidateImageOperations();
+                // Clear annotation visuals before replacing the document.
+                var annotationCanvas = this.FindControl<Canvas>("AnnotationCanvas");
+                annotationCanvas?.Children.Clear();
+                RefreshSpotlightOverlay();
+                _selectionController.ClearSelection();
+                _skipNextCoreImageChanged = true;
+                _suppressNextHistoryDirtyMark = true;
+                _editorCore.LoadImage(skBitmap);
+            }
+            finally
+            {
+                if (!ReferenceEquals(_editorCore.SourceImage, skBitmap)) skBitmap.Dispose();
+            }
 
             // Initialize canvas control
             _canvasControl?.Initialize(skBitmap.Width, skBitmap.Height);

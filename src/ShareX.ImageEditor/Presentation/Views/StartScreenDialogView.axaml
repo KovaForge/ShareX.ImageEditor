@@ -36,10 +36,8 @@
                             Height="32"
                             Padding="0"
                             HorizontalAlignment="Right">
-                        <TextBlock Text="{x:Static theming:LucideIcons.x}"
-                                   FontFamily="{DynamicResource ShareX.FontFamily.Icon}"
-                                   FontWeight="Normal"
-                                   FontSize="16"/>
+                        <TextBlock Text="{x:Static theming:LucideIcons.x}" FontFamily="{DynamicResource ShareX.FontFamily.Icon}" FontWeight="Normal" 
+                                                FontSize="16"/>
                     </Button>
                 </Grid>
             </Border>
@@ -54,12 +52,10 @@
                             Padding="12"
                             Margin="0,0,0,4">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                            <TextBlock Text="{x:Static theming:LucideIcons.circle_x}"
-                                       FontFamily="{DynamicResource ShareX.FontFamily.Icon}"
-                                       FontSize="18"
-                                       FontWeight="Normal"
-                                       VerticalAlignment="Center"
-                                       Foreground="{DynamicResource ShareX.Brush.Text}"/>
+                            <TextBlock Text="{x:Static theming:LucideIcons.circle_x}" FontFamily="{DynamicResource ShareX.FontFamily.Icon}" FontWeight="Normal" 
+                                                    FontSize="18"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{DynamicResource ShareX.Brush.Text}"/>
                             <TextBlock Grid.Column="1"
                                        Text="{Binding StatusMessage}"
                                        FontWeight="Normal"

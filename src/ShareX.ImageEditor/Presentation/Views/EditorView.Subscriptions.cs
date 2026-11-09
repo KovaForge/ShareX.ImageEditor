@@ -61,9 +61,15 @@ namespace ShareX.ImageEditor.Presentation.Views
             vm.SaveAsRequested += OnSaveAsRequested;
             vm.OpenOptionsPanelRequested += OnOpenOptionsPanelRequested;
             vm.FileMenuRequested += OnFileMenuRequested;
+            vm.CanvasSizeModeRequested += OnCanvasSizeModeRequested;
             vm.PropertyChanged += OnViewModelPropertyChanged;
             vm.DeselectRequested += OnDeselectRequested;
             vm.CanvasFocusRequested += OnCanvasFocusRequested;
+
+            if (vm.IsSettingsPanelOpen)
+            {
+                EnsureBackgroundSettingsPanel();
+            }
         }
 
         private void DetachViewModel()
@@ -94,6 +100,7 @@ namespace ShareX.ImageEditor.Presentation.Views
             vm.SaveAsRequested -= OnSaveAsRequested;
             vm.OpenOptionsPanelRequested -= OnOpenOptionsPanelRequested;
             vm.FileMenuRequested -= OnFileMenuRequested;
+            vm.CanvasSizeModeRequested -= OnCanvasSizeModeRequested;
             vm.PropertyChanged -= OnViewModelPropertyChanged;
             vm.DeselectRequested -= OnDeselectRequested;
             vm.CanvasFocusRequested -= OnCanvasFocusRequested;
@@ -107,6 +114,11 @@ namespace ShareX.ImageEditor.Presentation.Views
             _parentWindow.KeyDown -= OnKeyDown;
             _parentWindow.KeyUp -= OnKeyUp;
             _parentWindow.Activated -= OnWindowActivated;
+            _parentWindow.PositionChanged -= OnEditorWindowPositionChanged;
+            if (_parentWindow.Screens is { } screens)
+            {
+                screens.Changed -= OnEditorScreensChanged;
+            }
             _parentWindow = null;
         }
 

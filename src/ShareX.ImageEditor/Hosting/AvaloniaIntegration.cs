@@ -27,6 +27,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Platform;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using ShareX.ImageEditor.Presentation.ViewModels;
@@ -177,6 +178,26 @@ namespace ShareX.ImageEditor.Hosting
             });
         }
 
+        /// <summary>Opens a tool window on the screen that shows the host's main window.</summary>
+        private static void PlaceOnMainWindowScreen(Window window)
+        {
+            if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { IsVisible: true } mainWindow } ||
+                ReferenceEquals(mainWindow, window))
+            {
+                return;
+            }
+
+            Screen? screen = mainWindow.Screens.ScreenFromTopLevel(mainWindow);
+            if (screen == null)
+            {
+                return;
+            }
+
+            // Without an owner, CenterScreen centers on the screen that contains the window's position.
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            window.Position = screen.WorkingArea.Position;
+        }
+
         public static void ShowBackgroundRemoverWindow(string? modelsFolder)
         {
             ShowBackgroundRemoverWindow(modelsFolder, new BackgroundRemoverOptions());
@@ -259,6 +280,7 @@ namespace ShareX.ImageEditor.Hosting
                     tcs.SetResult(result);
                 };
 
+                PlaceOnMainWindowScreen(window);
                 window.Show();
             });
 

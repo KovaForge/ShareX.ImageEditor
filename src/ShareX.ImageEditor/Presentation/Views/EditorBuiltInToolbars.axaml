@@ -67,7 +67,7 @@
                             ZIndex="0">
                         <TextBlock Text="{x:Static theming:EditorIcons.ActionCancel}"
                                    FontFamily="{DynamicResource ShareX.FontFamily.Icon}"
-                                   FontSize="18"
+                                   FontSize="20"
                                    FontWeight="Normal"
                                    VerticalAlignment="Center"/>
                     </Button>
@@ -87,7 +87,7 @@
                             ZIndex="20">
                         <TextBlock Text="{x:Static theming:EditorIcons.ActionContinue}"
                                    FontFamily="{DynamicResource ShareX.FontFamily.Icon}"
-                                   FontSize="22"
+                                   FontSize="20"
                                    FontWeight="Normal"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
@@ -103,7 +103,7 @@
                         ToolTip.Placement="Top"
                         ToolTip.VerticalOffset="-5">
                     <TextBlock Text="{x:Static theming:EditorIcons.ActionCopy}"
-                               FontSize="18"
+                               FontSize="20"
                                FontFamily="{DynamicResource ShareX.FontFamily.Icon}"
                                FontWeight="Normal"/>
                 </Button>
@@ -116,7 +116,7 @@
                         ToolTip.Placement="Top"
                         ToolTip.VerticalOffset="-5">
                     <TextBlock Text="{x:Static theming:EditorIcons.ActionSave}"
-                               FontSize="18"
+                               FontSize="20"
                                FontFamily="{DynamicResource ShareX.FontFamily.Icon}"
                                FontWeight="Normal"/>
                 </Button>
@@ -129,7 +129,7 @@
                         ToolTip.Placement="Top"
                         ToolTip.VerticalOffset="-5">
                     <TextBlock Text="{x:Static theming:EditorIcons.ActionSaveAs}"
-                               FontSize="18"
+                               FontSize="20"
                                FontFamily="{DynamicResource ShareX.FontFamily.Icon}"
                                FontWeight="Normal"/>
                 </Button>
@@ -143,7 +143,7 @@
                         ToolTip.Placement="Top"
                         ToolTip.VerticalOffset="-5">
                     <TextBlock Text="{x:Static theming:EditorIcons.ActionPinToScreen}"
-                               FontSize="18"
+                               FontSize="20"
                                FontFamily="{DynamicResource ShareX.FontFamily.Icon}"
                                FontWeight="Normal"/>
                 </Button>
@@ -157,7 +157,7 @@
                         ToolTip.Placement="Top"
                         ToolTip.VerticalOffset="-5">
                     <TextBlock Text="{x:Static theming:EditorIcons.ActionPrint}"
-                               FontSize="18"
+                               FontSize="20"
                                FontFamily="{DynamicResource ShareX.FontFamily.Icon}"
                                FontWeight="Normal"/>
                 </Button>
@@ -171,7 +171,7 @@
                         ToolTip.Placement="Top"
                         ToolTip.VerticalOffset="-5">
                     <TextBlock Text="{x:Static theming:EditorIcons.ActionUpload}"
-                               FontSize="18"
+                               FontSize="20"
                                FontFamily="{DynamicResource ShareX.FontFamily.Icon}"
                                FontWeight="Normal"/>
                 </Button>

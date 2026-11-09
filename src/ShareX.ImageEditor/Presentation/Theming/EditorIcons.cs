@@ -47,13 +47,17 @@ namespace ShareX.ImageEditor.Presentation.Theming
         public const string ToolSmartEraser = LucideIcons.eraser;
         public const string ToolCrop = LucideIcons.crop;
         public const string ToolCutOut = LucideIcons.scissors;
+        public const string ToolCanvasSize = LucideIcons.expand;
         public const string ToolImage = LucideIcons.image;
+        public const string ToolClone = LucideIcons.stamp;
         public const string ToolEmoji = LucideIcons.smile;
+        public const string ToolEmojiSunglasses = LucideIcons.laugh;
 
         public const string ActionUndo = LucideIcons.undo_2;
         public const string ActionRedo = LucideIcons.redo_2;
         public const string ActionDelete = LucideIcons.trash_2;
         public const string ActionClearAll = LucideIcons.brush_cleaning;
+        public const string ActionCut = LucideIcons.scissors;
         public const string ActionCopy = LucideIcons.clipboard;
         public const string ActionPaste = LucideIcons.clipboard_paste;
         public const string ActionDuplicate = LucideIcons.copy_plus;
@@ -79,7 +83,9 @@ namespace ShareX.ImageEditor.Presentation.Theming
         public const string FormatItalic = LucideIcons.italic;
         public const string MenuTheme = LucideIcons.moon_star;
         public const string ToggleSpeechBalloonTail = LucideIcons.message_square_check;
+        public const string ToggleRoundedCorners = LucideIcons.square_round_corner;
         public const string ToggleEllipseShape = ToolEllipse;
+        public const string ToggleFreehandArrow = ToolArrow;
         public const string PanelBackground = LucideIcons.wallpaper;
         public const string PanelEffects = LucideIcons.sparkles;
         public const string LayerFlatten = LucideIcons.layers_2;
@@ -117,6 +123,7 @@ namespace ShareX.ImageEditor.Presentation.Theming
             EditorTool.Crop => ToolCrop,
             EditorTool.CutOut => ToolCutOut,
             EditorTool.Image => ToolImage,
+            EditorTool.Clone => ToolClone,
             EditorTool.Emoji => ToolEmoji,
             _ => ToolSelect
         };
